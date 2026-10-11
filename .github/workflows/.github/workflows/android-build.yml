@@ -1,73 +1,54 @@
-name: Android CI
+name: Build Android APK (Capacitor)
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
-  build:
-    name: Build Android APK
+  apk:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Code checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. JDK 17 setup
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      # 3. Android SDK setup (یہاں packages میں صرف platform-tools)
+      # ✅ Android SDK setup — setup-android@v3 استعمال نہ کریں
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools'
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      # 4. Gradle cache
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Install Node dependencies
+        run: npm install
 
-      # 5. Gradle wrapper کو executable بنائیں
+      - name: Prepare Android project (Capacitor)
+        run: bash scripts/prepare-android.sh
+
       - name: Grant execute permission for gradlew
+        working-directory: android
         run: chmod +x gradlew
 
-      # 6. Debug APK build کریں
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # 7. Debug APK artifact کے طور پر upload کریں
-      - name: Upload Debug APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: warn
-
-      # 8. (اختیاری) Release APK build کریں
-      # یہ تب کام کرے گا جب آپ کے پاس signing config ہو
-      - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace
-        continue-on-error: true
-
-      # 9. Release APK artifact
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: ignore
-        continue-on-error: true
+          name: AzanWatch-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
